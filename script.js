@@ -102,8 +102,12 @@ async function fetchWeatherAndLocation(lat, lon, customName = null) {
 
             const dewPoint = (temp - ((100 - humidity) / 5)).toFixed(1);
 
+            // Aktualizace názvu lokality v horním widgetu
+            const mainTitleEl = document.getElementById('locationTitleMain');
+            if (mainTitleEl) mainTitleEl.innerText = `📍 ${locationName}`;
+
             const weatherEl = document.getElementById('weatherInfo');
-            if (weatherEl) weatherEl.innerHTML = `📍 ${locationName} | 🌡️ ${temp}°C | ☁️ ${clouds}% clouds | 💨 ${wind} m/s`;
+            if (weatherEl) weatherEl.innerHTML = `🌡️ ${temp}°C | ☁️ ${clouds}% clouds | 💨 ${wind} m/s`;
             
             const tempEl = document.getElementById('tempVal');
             if (tempEl) tempEl.innerText = `${temp} °C`;
@@ -114,8 +118,13 @@ async function fetchWeatherAndLocation(lat, lon, customName = null) {
             const dewEl = document.getElementById('dewVal');
             if (dewEl) dewEl.innerText = `${dewPoint} °C`;
             
+            // Dynamický nadpis předpovědi
             const yrTitleEl = document.getElementById('yrLocationTitle');
             if (yrTitleEl) yrTitleEl.innerText = `Hourly forecast for ${locationName}`;
+
+            // Dynamický podnadpis předpovědi
+            const yrSubEl = document.getElementById('yrLocationSub');
+            if (yrSubEl) yrSubEl.innerText = `Detailed meteorological forecast for ${locationName}`;
 
             if (data.hourly && data.hourly.time) {
                 renderHourlyWeather(data.hourly.time, data.hourly.cloud_cover, data.hourly.temperature_2m, data.hourly.wind_speed_10m);
