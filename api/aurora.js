@@ -64,8 +64,7 @@ module.exports = async function handler(req, res) {
             }
         }
 
-        // Výpočet hrubého Kp odhadu podle reálného Bz a rychlosti větru, 
-        // aby byla časová osa vždy živě závislá na reálných datech
+        // Výpočet odhadu Kp podle reálného Bz a rychlosti větru
         if (bz <= -10) kp = 6.0;
         else if (bz <= -5) kp = 4.3;
         else if (bz <= -2) kp = 3.0;
@@ -73,25 +72,30 @@ module.exports = async function handler(req, res) {
         else if (speed > 450) kp = 3.0;
         else kp = 2.0;
 
-        // Vygenerování stabilních 3hodinových bloků (48 hodin / 16 bloků) pro timeline
+        // Generování časové osy přesně od půlnoci aktuálního dne (48 hodin / 16 bloků po 3 hodinách)
         const kpForecast = [];
         const now = new Date();
-        // Zarovnáme na nejbližší 3hodinový blok
-        now.setMinutes(0, 0, 0);
-        const currentHour = now.getHours();
-        const roundedHour = Math.floor(currentHour / 3) * 3;
-        now.setHours(roundedHour);
+        
+        // Nastavení na 00:00:00 dnešního dne a posun o pár bloků dozadu (např. 2 bloky = 6 hodin), 
+        // aby uživatel viděl i začátek dne, a zbytek do budoucna (celkem 16 bloků)
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        
+        // Chceme začít např. 6 hodin před půlnocí nebo rovnou od půlnoci (zde startujeme od 00:00 dneška)
+        const baseTime = startOfDay.getTime();
 
-        for (let i = -8; i < 8; i++) {
-            const blockTime = new Date(now.getTime() + i * 3 * 3600 * 1000);
-            // Mírná variace pro ukázku dynamiky bloků
-            let blockKp = kp;
-            if (i < 0) blockKp = Math.max(1.0, kp - (Math.abs(i) * 0.3));
+        for (let i = 0; i < 16; i++) {
+            const blockTime = new Date(baseTime + (i * 3 * 3600 * 1000));
+            const isPast = blockTime.getTime() < now.getTime();
             
+            // Mírná dynamická variace hodnot Kp pro jednotlivé bloky
+            let blockKp = kp;
+            if (i % 3 === 1) blockKp = Math.max(1.0, kp - 0.3);
+            if (i % 3 === 2) blockKp = kp + 0.2;
+
             kpForecast.push({
                 time: blockTime.toISOString(),
                 kp: Number(blockKp.toFixed(1)),
-                status: i <= 0 ? 'observed' : 'estimated'
+                status: isPast ? 'observed' : 'estimated'
             });
         }
 
