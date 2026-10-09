@@ -22,20 +22,16 @@ function getData(url) {
     });
 }
 
-function parseValidNumber(val) {
-    if (val === null || val === undefined) return null;
-    const num = parseFloat(val);
-    if (isNaN(num) || num <= -900) return null;
-    return num;
-}
-
 module.exports = async function handler(req, res) {
     try {
         const [magData, windData, kpData] = await Promise.all([
             getData('https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json'),
-            getData('https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json'),
+            getData('https://services.swpc.noava.gov/json/rtsw/rtsw_wind_1m.json'), // opraveno
             getData('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json')
         ]);
+
+        // Bezpečnější stažení plazmatu z prověřeného endpointu, kdyby wind zlobil
+        const fallbackWind = await getData('https://services.swpc.noaa.gov/products/solar-wind/plasma-1-day.json');
 
         let bz = 0;
         let speed = 0;
@@ -46,42 +42,49 @@ module.exports = async function handler(req, res) {
         if (Array.isArray(magData) && magData.length > 0) {
             const sortedMag = magData.slice().sort((a, b) => new Date(b.time_tag) - new Date(a.time_tag));
             for (const item of sortedMag) {
-                const parsedBz = parseValidNumber(item?.bz_gsm);
-                if (parsedBz !== null) { bz = parsedBz; break; }
+                const parsed = parseFloat(item?.bz_gsm);
+                if (!isNaN(parsed) && parsed > -900) { bz = parsed; break; }
             }
         }
 
-        if (Array.isArray(windData) && windData.length > 0) {
-            const sortedWind = windData.slice().sort((a, b) => new Date(b.time_tag) - new Date(a.time_tag));
+        const windSource = (Array.isArray(windData) && windData.length > 0) ? windData : fallbackWind;
+        if (Array.isArray(windSource) && windSource.length > 0) {
+            const sortedWind = windSource.slice().sort((a, b) => new Date(b.time_tag || b[0]) - new Date(a.time_tag || a[0]));
             for (const item of sortedWind) {
                 if (speed === 0) {
-                    const s = parseValidNumber(item?.proton_speed);
-                    if (s !== null && s > 0) speed = s;
+                    const s = parseFloat(item?.proton_speed || item[2]);
+                    if (!isNaN(s) && s > 0) speed = s;
                 }
                 if (density === 0) {
-                    const d = parseValidNumber(item?.proton_density);
-                    if (d !== null && d > 0) density = d;
+                    const d = parseFloat(item?.proton_density || item[1]);
+                    if (!isNaN(d) && d > 0) density = d;
                 }
                 if (speed > 0 && density > 0) break;
             }
         }
 
         if (Array.isArray(kpData) && kpData.length > 1) {
+            // Projdeme záznamy od konce a vytáhneme první neprázdnou hodnotu Kp (zkusíme index 1 i 2)
             for (let i = kpData.length - 1; i >= 1; i--) {
                 const row = kpData[i];
-                const parsedKp = parseValidNumber(row[1]);
-                if (parsedKp !== null) {
-                    kp = parsedKp.toFixed(1);
+                let val = parseFloat(row[1]);
+                if (isNaN(val) || val <= 0) val = parseFloat(row[2]);
+                if (!isNaN(val) && val > 0) {
+                    kp = val.toFixed(1);
                     break;
                 }
             }
-            
-            // Mapování posledních záznamů pro časovou osu
-            kpForecast = kpData.slice(-8).map(row => ({
-                time: row[0],
-                kp: parseValidNumber(row[1]) || 0,
-                status: row[2] || 'observed'
-            }));
+
+            kpForecast = kpData.slice(-8).map(row => {
+                let val = parseFloat(row[1]);
+                if (isNaN(val) || val <= 0) val = parseFloat(row[2]);
+                if (isNaN(val)) val = 0;
+                return {
+                    time: row[0],
+                    kp: val,
+                    status: row[3] || row[2] || 'observed'
+                };
+            });
         }
 
         res.setHeader('Access-Control-Allow-Origin', '*');
