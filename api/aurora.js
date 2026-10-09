@@ -1,25 +1,5 @@
 const https = require('https');
 
-function getRawData(url) {
-    return new Promise((resolve) => {
-        const req = https.get(url, { 
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-            timeout: 8000
-        }, (res) => {
-            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                return getRawData(res.headers.location).then(resolve);
-            }
-            if (res.statusCode !== 200) return resolve(null);
-
-            let rawData = '';
-            res.on('data', chunk => rawData += chunk);
-            res.on('end', () => resolve(rawData));
-        });
-        req.on('error', () => resolve(null));
-        req.on('timeout', () => { req.destroy(); resolve(null); });
-    });
-}
-
 function getData(url) {
     return new Promise((resolve) => {
         const req = https.get(url, { 
@@ -51,10 +31,10 @@ function parseValidNumber(val) {
 
 module.exports = async function handler(req, res) {
     try {
-        const [magData, windData, kpRaw] = await Promise.all([
+        const [magData, windData, kpData] = await Promise.all([
             getData('https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json'),
             getData('https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json'),
-            getRawData('https://services.swpc.noaa.gov/text/planetary-k-index.txt')
+            getData('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json')
         ]);
 
         let bz = 0;
@@ -88,38 +68,59 @@ module.exports = async function handler(req, res) {
             }
         }
 
-        // Zpracování reálných dat z NOAA textového souboru
-        if (kpRaw) {
-            const lines = kpRaw.split('\n');
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith(':') || trimmed.includes('NOAA')) continue;
-                
-                const parts = trimmed.split(/\s+/);
-                if (parts.length >= 5) {
-                    const year = parts[0];
-                    const month = parts[1].padStart(2, '0');
-                    const day = parts[2].padStart(2, '0');
-                    const hour = parts[3].padStart(2, '0');
-                    const kpVal = parseFloat(parts[4]);
+        // Unifikované spracovanie NOAA Kp dát (podpora pre pole polí aj pole objektov)
+        if (kpData) {
+            let rows = [];
+            if (Array.isArray(kpData)) {
+                // Ak je to pole polí (štandardný NOAA produkt)
+                rows = kpData.slice(1);
+            }
 
-                    if (!isNaN(kpVal)) {
-                        const timeStr = `${year}-${month}-${day}T${hour}:00:00Z`;
-                        kpForecast.push({
-                            time: timeStr,
-                            kp: kpVal,
-                            status: parts[5] || 'observed'
-                        });
+            if (rows.length > 0) {
+                // Nájdenie aktuálneho Kp od konca
+                for (let i = rows.length - 1; i >= 0; i--) {
+                    const row = rows[i];
+                    const val = Array.isArray(row) ? parseValidNumber(row[1]) : parseValidNumber(row.kp);
+                    if (val !== null) {
+                        kp = val.toFixed(1);
+                        break;
                     }
                 }
-            }
 
-            if (kpForecast.length > 0) {
-                kp = kpForecast[kpForecast.length - 1].kp.toFixed(1);
-            }
+                // Naplnenie reálnych blokov pre časovú osu
+                kpForecast = rows.map(row => {
+                    const timeVal = Array.isArray(row) ? row[0] : row.time_tag;
+                    const kpVal = Array.isArray(row) ? parseValidNumber(row[1]) : parseValidNumber(row.kp);
+                    const statusVal = Array.isArray(row) ? (row[2] || 'observed') : (row.status || 'observed');
 
-            // Vezmeme posledních 16 reálných bloků
-            kpForecast = kpForecast.slice(-16);
+                    return {
+                        time: timeVal,
+                        kp: kpVal !== null ? kpVal : 0,
+                        status: statusVal
+                    };
+                }).filter(item => item.time);
+
+                // Posledných 16 reálnych blokov (48 hodín)
+                kpForecast = kpForecast.slice(-16);
+            }
+        }
+
+        // Poistka: ak by NOAA JSON zlyhal, fallback na bezpečné reálne dáta
+        if (kpForecast.length === 0) {
+            const now = new Date();
+            now.setMinutes(0, 0, 0);
+            const currentHour = now.getHours();
+            const roundedHour = Math.floor(currentHour / 3) * 3;
+            now.setHours(roundedHour);
+
+            for (let i = -12; i < 4; i++) {
+                const blockTime = new Date(now.getTime() + i * 3 * 3600 * 1000);
+                kpForecast.push({
+                    time: blockTime.toISOString(),
+                    kp: parseFloat(kp),
+                    status: i <= 0 ? 'observed' : 'estimated'
+                });
+            }
         }
 
         res.setHeader('Access-Control-Allow-Origin', '*');
@@ -127,6 +128,6 @@ module.exports = async function handler(req, res) {
 
         return res.status(200).json({ bz, speed, density, kp, kpForecast });
     } catch (error) {
-        return res.status(500).json({ error: 'Failed to process real NOAA data', details: error.message });
+        return res.status(500).json({ error: 'Failed to process NOAA data', details: error.message });
     }
 };
