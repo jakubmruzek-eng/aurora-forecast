@@ -79,7 +79,6 @@ module.exports = async function handler(req, res) {
             }
         }
 
-        // Parsování tabulky přímo z 3-day-forecast.txt
         if (forecastText) {
             const lines = forecastText.split('\n');
             let capturing = false;
@@ -93,7 +92,6 @@ module.exports = async function handler(req, res) {
                     continue;
                 }
                 if (capturing) {
-                    // Najdeme hlavičku s datumy (např. "Oct 09    Oct 10    Oct 11")
                     if (line.includes('Oct') || line.includes('Nov') || line.includes('Dec') || line.includes('Jan') || line.includes('Feb') || line.includes('Mar') || line.includes('Apr') || line.includes('May') || line.includes('Jun') || line.includes('Jul') || line.includes('Aug') || line.includes('Sep')) {
                         const matches = line.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov)\s+\d+/g);
                         if (matches && matches.length > 0) {
@@ -105,7 +103,6 @@ module.exports = async function handler(req, res) {
                         continue;
                     }
 
-                    // Zpracování řádků s časy (např. "00-03UT")
                     if (line.includes('UT') && dates.length > 0) {
                         const parts = line.trim().split(/\s+/);
                         if (parts.length >= 2) {
@@ -114,7 +111,6 @@ module.exports = async function handler(req, res) {
                             
                             let partIdx = 1;
                             for (let d = 0; d < dates.length; d++) {
-                                // Přeskočíme případné texty jako "(G1)" nebo "(G2)"
                                 while (partIdx < parts.length && (parts[partIdx].startsWith('(') || parts[partIdx].includes('G'))) {
                                     partIdx++;
                                 }
@@ -122,6 +118,7 @@ module.exports = async function handler(req, res) {
                                     const kpVal = parseFloat(parts[partIdx]);
                                     if (!isNaN(kpVal) && kpVal >= 0) {
                                         const { month, day } = dates[d];
+                                        // Vytvoříme UTC datum pro tento blok
                                         const dateObj = new Date(Date.UTC(currentYear, month, day, startHour, 0, 0));
                                         const nowTime = Date.now();
                                         
@@ -145,6 +142,7 @@ module.exports = async function handler(req, res) {
         }
 
         if (kpForecast.length > 0) {
+            // Seřazení chronologicky podle přesného času
             kpForecast.sort((a, b) => new Date(a.time) - new Date(b.time));
             
             const nowTime = Date.now();
@@ -161,7 +159,6 @@ module.exports = async function handler(req, res) {
             }
         }
 
-        // Bezpečnostní pojistka, kdyby textový soubor selhal
         if (kpForecast.length === 0) {
             const now = new Date();
             now.setMinutes(0, 0, 0);
