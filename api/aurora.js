@@ -31,16 +31,19 @@ function parseValidNumber(val) {
 
 module.exports = async function handler(req, res) {
     try {
-        const [magData, windData] = await Promise.all([
+        const [magData, windData, kpData] = await Promise.all([
             getData('https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json'),
-            getData('https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json')
+            getData('https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json'),
+            getData('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json')
         ]);
 
         let bz = 0;
         let speed = 0;
         let density = 0;
-        let kp = 2.0;
+        let kp = '2.0';
+        let kpForecast = [];
 
+        // Reálná magnetická data (Bz)
         if (Array.isArray(magData) && magData.length > 0) {
             const sortedMag = magData.slice().sort((a, b) => new Date(b.time_tag) - new Date(a.time_tag));
             for (const item of sortedMag) {
@@ -49,6 +52,7 @@ module.exports = async function handler(req, res) {
             }
         }
 
+        // Reálná data solárního větru (rychlost a hustota)
         if (Array.isArray(windData) && windData.length > 0) {
             const sortedWind = windData.slice().sort((a, b) => new Date(b.time_tag) - new Date(a.time_tag));
             for (const item of sortedWind) {
@@ -64,40 +68,45 @@ module.exports = async function handler(req, res) {
             }
         }
 
-        // Výpočet odhadu Kp podle reálného Bz a rychlosti větru
-        if (bz <= -10) kp = 6.0;
-        else if (bz <= -5) kp = 4.3;
-        else if (bz <= -2) kp = 3.0;
-        else if (speed > 550) kp = 4.0;
-        else if (speed > 450) kp = 3.0;
-        else kp = 2.0;
+        // Zpracování reálných K-index dat z NOAA produktu (pole polí)
+        if (Array.isArray(kpData) && kpData.length > 1) {
+            const header = kpData[0];
+            let timeIdx = header.indexOf('time_tag');
+            if (timeIdx === -1) timeIdx = 0;
+            let kpIdx = header.indexOf('kp');
+            if (kpIdx === -1) kpIdx = 1;
+            let statusIdx = header.indexOf('observer'); // nebo status/source podle struktury NOAA
 
-        // Generování časové osy od půlnoci aktuálního dne (48 hodin / 16 bloků po 3 hodinách)
-        const kpForecast = [];
-        const now = new Date();
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-        const baseTime = startOfDay.getTime();
+            const rows = kpData.slice(1);
 
-        for (let i = 0; i < 16; i++) {
-            const blockTime = new Date(baseTime + (i * 3 * 3600 * 1000));
-            const isPast = blockTime.getTime() < now.getTime();
-            
-            let blockKp = kp;
-            if (i % 3 === 1) blockKp = Math.max(1.0, kp - 0.3);
-            if (i % 3 === 2) blockKp = kp + 0.2;
+            // Nalezení aktuálního platného Kp
+            for (let i = rows.length - 1; i >= 0; i--) {
+                const val = parseValidNumber(rows[i][kpIdx]);
+                if (val !== null) {
+                    kp = val.toFixed(1);
+                    break;
+                }
+            }
 
-            kpForecast.push({
-                time: blockTime.toISOString(),
-                kp: Number(blockKp.toFixed(1)),
-                status: isPast ? 'observed' : 'estimated'
-            });
+            // Naplnění reálných bloků z NOAA
+            kpForecast = rows.map(row => {
+                const val = parseValidNumber(row[kpIdx]);
+                return {
+                    time: row[timeIdx],
+                    kp: val !== null ? val : 0,
+                    status: row[2] || 'observed'
+                };
+            }).filter(item => item.time && item.kp >= 0);
+
+            // Vezmeme posledních 16 reálných bloků (48 hodin)
+            kpForecast = kpForecast.slice(-16);
         }
 
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate');
 
-        return res.status(200).json({ bz, speed, density, kp: kp.toFixed(1), kpForecast });
+        return res.status(200).json({ bz, speed, density, kp, kpForecast });
     } catch (error) {
-        return res.status(500).json({ error: 'Failed to process data', details: error.message });
+        return res.status(500).json({ error: 'Failed to process real NOAA data', details: error.message });
     }
 };
