@@ -43,7 +43,7 @@ module.exports = async function handler(req, res) {
         let kp = '2.0';
         let kpForecast = [];
 
-        // Reálná magnetická data (Bz)
+        // Reálné Bz
         if (Array.isArray(magData) && magData.length > 0) {
             const sortedMag = magData.slice().sort((a, b) => new Date(b.time_tag) - new Date(a.time_tag));
             for (const item of sortedMag) {
@@ -52,7 +52,7 @@ module.exports = async function handler(req, res) {
             }
         }
 
-        // Reálná data solárního větru (rychlost a hustota)
+        // Reálný vítr
         if (Array.isArray(windData) && windData.length > 0) {
             const sortedWind = windData.slice().sort((a, b) => new Date(b.time_tag) - new Date(a.time_tag));
             for (const item of sortedWind) {
@@ -68,37 +68,28 @@ module.exports = async function handler(req, res) {
             }
         }
 
-        // Zpracování reálných K-index dat z NOAA produktu (pole polí)
+        // Reálné Kp hodnoty z NOAA JSON produktu (index 0 = čas, index 1 = Kp, index 2 = status)
         if (Array.isArray(kpData) && kpData.length > 1) {
-            const header = kpData[0];
-            let timeIdx = header.indexOf('time_tag');
-            if (timeIdx === -1) timeIdx = 0;
-            let kpIdx = header.indexOf('kp');
-            if (kpIdx === -1) kpIdx = 1;
-            let statusIdx = header.indexOf('observer'); // nebo status/source podle struktury NOAA
-
             const rows = kpData.slice(1);
 
-            // Nalezení aktuálního platného Kp
             for (let i = rows.length - 1; i >= 0; i--) {
-                const val = parseValidNumber(rows[i][kpIdx]);
+                const val = parseValidNumber(rows[i][1]);
                 if (val !== null) {
                     kp = val.toFixed(1);
                     break;
                 }
             }
 
-            // Naplnění reálných bloků z NOAA
             kpForecast = rows.map(row => {
-                const val = parseValidNumber(row[kpIdx]);
+                const val = parseValidNumber(row[1]);
                 return {
-                    time: row[timeIdx],
+                    time: row[0],
                     kp: val !== null ? val : 0,
                     status: row[2] || 'observed'
                 };
-            }).filter(item => item.time && item.kp >= 0);
+            }).filter(item => item.time);
 
-            // Vezmeme posledních 16 reálných bloků (48 hodin)
+            // Posledních 16 reálných bloků (48 hodin)
             kpForecast = kpForecast.slice(-16);
         }
 
