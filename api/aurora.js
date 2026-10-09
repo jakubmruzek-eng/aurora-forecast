@@ -88,6 +88,18 @@ module.exports = async function handler(req, res) {
                 'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
             };
 
+            // Definice 8 bloků podle NOAA tabulky
+            const blockHours = [
+                { start: 0, label: '00-03 UTC' },
+                { start: 3, label: '03-06 UTC' },
+                { start: 6, label: '06-09 UTC' },
+                { start: 9, label: '09-12 UTC' },
+                { start: 12, label: '12-15 UTC' },
+                { start: 15, label: '15-18 UTC' },
+                { start: 18, label: '18-21 UTC' },
+                { start: 21, label: '21-00 UTC' }
+            ];
+
             for (let line of lines) {
                 if (line.includes('UNIT: Kp')) {
                     capturing = true;
@@ -105,17 +117,21 @@ module.exports = async function handler(req, res) {
 
                         if (month !== undefined && !isNaN(dayStr)) {
                             const day = parseInt(dayStr, 10);
-                            const hours = ['00:00:00', '03:00:00', '06:00:00', '09:00:00', '12:00:00', '15:00:00', '18:00:00', '21:00:00'];
                             
                             for (let i = 0; i < 8; i++) {
-                                const kpVal = parseFloat(parts[2 + i]);
+                                // Vyčištění hodnoty od případných popisků jako "(G1)"
+                                const rawVal = parts[2 + i];
+                                const kpVal = parseFloat(rawVal);
+                                
                                 if (!isNaN(kpVal) && kpVal >= 0) {
-                                    const dateObj = new Date(Date.UTC(currentYear, month, day, parseInt(hours[i].substring(0, 2)), 0, 0));
+                                    const hourInfo = blockHours[i];
+                                    const dateObj = new Date(Date.UTC(currentYear, month, day, hourInfo.start, 0, 0));
                                     const nowTime = Date.now();
                                     const blockTime = dateObj.getTime();
                                     
                                     kpForecast.push({
                                         time: dateObj.toISOString(),
+                                        label: `${monthStr} ${day} (${hourInfo.label})`,
                                         kp: kpVal,
                                         status: blockTime <= nowTime ? 'observed' : 'predicted'
                                     });
@@ -128,33 +144,21 @@ module.exports = async function handler(req, res) {
         }
 
         if (kpForecast.length > 0) {
+            // Seřazení chronologicky
             kpForecast.sort((a, b) => new Date(a.time) - new Date(b.time));
             
+            // Oříznutí na aktuální bloky
             const nowTime = Date.now();
             let currentIndex = kpForecast.findIndex(item => new Date(item.time).getTime() > nowTime);
-            if (currentIndex === -1) currentIndex = kpForecast.length - 16;
+            if (currentIndex === -1) currentIndex = kpForecast.length - 12;
             
-            let startIndex = Math.max(0, currentIndex - 8);
-            let endIndex = startIndex + 16;
+            let startIndex = Math.max(0, currentIndex - 6);
+            let endIndex = startIndex + 12; // 12 bloků přesně pokrývá přehledné 3hodinové okno
             kpForecast = kpForecast.slice(startIndex, endIndex);
 
             const activeBlock = kpForecast.find(item => new Date(item.time).getTime() >= nowTime);
             if (activeBlock) {
                 kp = activeBlock.kp.toFixed(1);
-            }
-        }
-
-        if (kpForecast.length === 0) {
-            const now = new Date();
-            now.setMinutes(0, 0, 0);
-            const baseTime = Math.floor(now.getTime() / (3 * 3600 * 1000)) * (3 * 3600 * 1000) - (8 * 3 * 3600 * 1000);
-            for (let i = 0; i < 16; i++) {
-                const blockTime = new Date(baseTime + (i * 3 * 3600 * 1000));
-                kpForecast.push({
-                    time: blockTime.toISOString(),
-                    kp: 3.0,
-                    status: blockTime.getTime() <= now.getTime() ? 'observed' : 'predicted'
-                });
             }
         }
 
