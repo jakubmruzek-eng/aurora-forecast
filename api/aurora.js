@@ -79,49 +79,66 @@ module.exports = async function handler(req, res) {
             }
         }
 
+        // Parsování tabulky přímo z 3-day-forecast.txt
         if (forecastText) {
             const lines = forecastText.split('\n');
             let capturing = false;
+            let dates = [];
             let currentYear = new Date().getFullYear();
-            let months = {
-                'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
-                'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
-            };
+            let months = { 'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5, 'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11 };
 
             for (let line of lines) {
-                if (line.includes('UNIT: Kp')) {
+                if (line.includes('NOAA Kp index breakdown')) {
                     capturing = true;
                     continue;
                 }
                 if (capturing) {
-                    const trimmed = line.trim();
-                    if (!trimmed || trimmed.includes(':') || trimmed.includes('NOAA')) continue;
+                    // Najdeme hlavičku s datumy (např. "Oct 09    Oct 10    Oct 11")
+                    if (line.includes('Oct') || line.includes('Nov') || line.includes('Dec') || line.includes('Jan') || line.includes('Feb') || line.includes('Mar') || line.includes('Apr') || line.includes('May') || line.includes('Jun') || line.includes('Jul') || line.includes('Aug') || line.includes('Sep')) {
+                        const matches = line.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov)\s+\d+/g);
+                        if (matches && matches.length > 0) {
+                            dates = matches.map(m => {
+                                const parts = m.trim().split(/\s+/);
+                                return { month: months[parts[0]], day: parseInt(parts[1], 10) };
+                            });
+                        }
+                        continue;
+                    }
 
-                    const parts = trimmed.split(/\s+/);
-                    if (parts.length >= 10) {
-                        const monthStr = parts[0];
-                        const dayStr = parts[1];
-                        const month = months[monthStr];
-
-                        if (month !== undefined && !isNaN(dayStr)) {
-                            const day = parseInt(dayStr, 10);
-                            const hours = ['00:00:00', '03:00:00', '06:00:00', '09:00:00', '12:00:00', '15:00:00', '18:00:00', '21:00:00'];
+                    // Zpracování řádků s časy (např. "00-03UT")
+                    if (line.includes('UT') && dates.length > 0) {
+                        const parts = line.trim().split(/\s+/);
+                        if (parts.length >= 2) {
+                            const timeSlot = parts[0];
+                            const startHour = parseInt(timeSlot.split('-')[0], 10);
                             
-                            for (let i = 0; i < 8; i++) {
-                                const kpVal = parseFloat(parts[2 + i]);
-                                if (!isNaN(kpVal) && kpVal >= 0) {
-                                    const dateObj = new Date(Date.UTC(currentYear, month, day, parseInt(hours[i].substring(0, 2)), 0, 0));
-                                    const nowTime = Date.now();
-                                    const blockTime = dateObj.getTime();
-                                    
-                                    kpForecast.push({
-                                        time: dateObj.toISOString(),
-                                        kp: kpVal,
-                                        status: blockTime <= nowTime ? 'observed' : 'predicted'
-                                    });
+                            let partIdx = 1;
+                            for (let d = 0; d < dates.length; d++) {
+                                // Přeskočíme případné texty jako "(G1)" nebo "(G2)"
+                                while (partIdx < parts.length && (parts[partIdx].startsWith('(') || parts[partIdx].includes('G'))) {
+                                    partIdx++;
                                 }
+                                if (partIdx < parts.length && dates[d]) {
+                                    const kpVal = parseFloat(parts[partIdx]);
+                                    if (!isNaN(kpVal) && kpVal >= 0) {
+                                        const { month, day } = dates[d];
+                                        const dateObj = new Date(Date.UTC(currentYear, month, day, startHour, 0, 0));
+                                        const nowTime = Date.now();
+                                        
+                                        kpForecast.push({
+                                            time: dateObj.toISOString(),
+                                            kp: kpVal,
+                                            status: dateObj.getTime() <= nowTime ? 'observed' : 'predicted'
+                                        });
+                                    }
+                                }
+                                partIdx++;
                             }
                         }
+                    }
+
+                    if (line.trim() === '' && kpForecast.length > 0) {
+                        capturing = false;
                     }
                 }
             }
@@ -132,9 +149,9 @@ module.exports = async function handler(req, res) {
             
             const nowTime = Date.now();
             let currentIndex = kpForecast.findIndex(item => new Date(item.time).getTime() > nowTime);
-            if (currentIndex === -1) currentIndex = kpForecast.length - 16;
+            if (currentIndex === -1) currentIndex = Math.max(0, kpForecast.length - 12);
             
-            let startIndex = Math.max(0, currentIndex - 8);
+            let startIndex = Math.max(0, currentIndex - 6);
             let endIndex = startIndex + 16;
             kpForecast = kpForecast.slice(startIndex, endIndex);
 
@@ -144,6 +161,7 @@ module.exports = async function handler(req, res) {
             }
         }
 
+        // Bezpečnostní pojistka, kdyby textový soubor selhal
         if (kpForecast.length === 0) {
             const now = new Date();
             now.setMinutes(0, 0, 0);
@@ -163,6 +181,6 @@ module.exports = async function handler(req, res) {
 
         return res.status(200).json({ bz, speed, density, kp, kpForecast });
     } catch (error) {
-        return res.status(500).json({ error: 'Failed to process 3-day forecast', details: error.message });
+        return res.status(500).json({ error: 'Failed to process 3-day forecast text', details: error.message });
     }
 };
