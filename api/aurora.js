@@ -43,7 +43,6 @@ module.exports = async function handler(req, res) {
         let kp = '2.0';
         let kpForecast = [];
 
-        // 1. Bz z rtsw_mag_1m.json[cite: 6]
         if (Array.isArray(magData) && magData.length > 0) {
             const sortedMag = magData.slice().sort((a, b) => new Date(b.time_tag) - new Date(a.time_tag));
             for (const item of sortedMag) {
@@ -55,7 +54,6 @@ module.exports = async function handler(req, res) {
             }
         }
 
-        // 2. Rychlost a Hustota z rtsw_wind_1m.json[cite: 6]
         if (Array.isArray(windData) && windData.length > 0) {
             const sortedWind = windData.slice().sort((a, b) => new Date(b.time_tag) - new Date(a.time_tag));
             for (const item of sortedWind) {
@@ -71,23 +69,21 @@ module.exports = async function handler(req, res) {
             }
         }
 
-        // 3. Kp index a forecast z noaa-planetary-k-index.json[cite: 6]
         if (Array.isArray(kpData) && kpData.length > 1) {
             for (let i = kpData.length - 1; i >= 1; i--) {
                 const row = kpData[i];
-                const parsedKp = parseValidNumber(row[1]);
-                if (parsedKp !== null) {
+                const parsedKp = parseFloat(row[1]);
+                if (!isNaN(parsedKp)) {
                     kp = parsedKp.toFixed(1);
                     break;
                 }
             }
 
-            // Bezpečné mapování posledních 8 záznamů pro časovou osu
             kpForecast = kpData.slice(-8).map(row => {
-                const val = parseValidNumber(row[1]);
+                const val = parseFloat(row[1]);
                 return {
                     time: row[0],
-                    kp: val !== null ? val : 0,
+                    kp: !isNaN(val) ? val : 0,
                     status: row[2] || 'observed'
                 };
             });
