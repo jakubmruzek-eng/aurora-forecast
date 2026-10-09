@@ -1,25 +1,5 @@
 const https = require('https');
 
-function getRawData(url) {
-    return new Promise((resolve) => {
-        const req = https.get(url, { 
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-            timeout: 8000
-        }, (res) => {
-            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                return getRawData(res.headers.location).then(resolve);
-            }
-            if (res.statusCode !== 200) return resolve(null);
-
-            let rawData = '';
-            res.on('data', chunk => rawData += chunk);
-            res.on('end', () => resolve(rawData));
-        });
-        req.on('error', () => resolve(null));
-        req.on('timeout', () => { req.destroy(); resolve(null); });
-    });
-}
-
 function getData(url) {
     return new Promise((resolve) => {
         const req = https.get(url, { 
@@ -51,10 +31,10 @@ function parseValidNumber(val) {
 
 module.exports = async function handler(req, res) {
     try {
-        const [magData, windData, kpRaw] = await Promise.all([
+        const [magData, windData, kpData] = await Promise.all([
             getData('https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json'),
             getData('https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json'),
-            getRawData('https://services.swpc.noaa.gov/text/planetary-k-index.txt')
+            getData('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json')
         ]);
 
         let bz = 0;
@@ -86,40 +66,30 @@ module.exports = async function handler(req, res) {
             }
         }
 
-        // Zpracování čistého textového výstupu NOAA K-indexu
-        if (kpRaw) {
-            const lines = kpRaw.split('\n');
-            for (const line of lines) {
-                const trimmed = line.trim();
-                // Přeskočíme komentáře a hlavičky
-                if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith(':') || trimmed.includes('NOAA')) continue;
-                
-                const parts = trimmed.split(/\s+/);
-                if (parts.length >= 5) {
-                    // Formát NOAA textu: YYYY MM DD HH Kp ...
-                    const year = parts[0];
-                    const month = parts[1].padStart(2, '0');
-                    const day = parts[2].padStart(2, '0');
-                    const hour = parts[3].padStart(2, '0');
-                    const kpVal = parseFloat(parts[4]);
+        if (Array.isArray(kpData) && kpData.length > 1) {
+            const header = kpData[0];
+            let timeIdx = header.indexOf('time_tag');
+            if (timeIdx === -1) timeIdx = 0;
+            let kpIdx = header.indexOf('kp');
+            if (kpIdx === -1) kpIdx = 1;
 
-                    if (!isNaN(kpVal)) {
-                        const timeStr = `${year}-${month}-${day}T${hour}:00:00Z`;
-                        kpForecast.push({
-                            time: timeStr,
-                            kp: kpVal,
-                            status: parts[5] || 'observed'
-                        });
-                    }
+            const rows = kpData.slice(1);
+            
+            for (let i = rows.length - 1; i >= 0; i--) {
+                const val = parseValidNumber(rows[i][kpIdx]);
+                if (val !== null) {
+                    kp = val.toFixed(1);
+                    break;
                 }
             }
 
-            // Vezmeme aktuální Kp z posledního platného záznamu
-            if (kpForecast.length > 0) {
-                kp = kpForecast[kpForecast.length - 1].kp.toFixed(1);
-            }
+            kpForecast = rows.map(row => ({
+                time: row[timeIdx],
+                kp: parseValidNumber(row[kpIdx]) !== null ? parseValidNumber(row[kpIdx]) : 0,
+                status: row[2] || 'observed'
+            })).filter(item => item.time);
 
-            // Ořízneme na posledních 16 bloků (cca 48 hodin / 2 dny)
+            // Posledných 16 blokov (cca 48 hodín / 2 dni)
             kpForecast = kpForecast.slice(-16);
         }
 
