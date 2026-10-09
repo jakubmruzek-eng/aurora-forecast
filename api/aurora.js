@@ -22,13 +22,6 @@ function getData(url) {
     });
 }
 
-function parseValidNumber(val) {
-    if (val === null || val === undefined) return null;
-    const num = parseFloat(val);
-    if (isNaN(num) || num < 0 || num > 9) return null;
-    return num;
-}
-
 module.exports = async function handler(req, res) {
     try {
         const [magData, windData, kpData] = await Promise.all([
@@ -67,26 +60,28 @@ module.exports = async function handler(req, res) {
         }
 
         if (Array.isArray(kpData) && kpData.length > 1) {
-            // Hledáme platný Kp v datech (sloupec 1 nebo 2 podle struktury NOAA JSON)
-            for (let i = kpData.length - 1; i >= 1; i--) {
-                const row = kpData[i];
-                const val = parseFloat(row[1]);
-                if (!isNaN(val) && val >= 0) {
-                    kp = val.toFixed(1);
-                    break;
-                }
-            }
+            // První řádek je ["time_tag", "kp", "observed", "station_count"]
+            // Zjistíme index sloupce "kp" z hlavičky
+            const header = kpData[0];
+            const kpIndex = header.indexOf('kp');
 
-            // Mapování posledních záznamů pro časovou osu (čas je v indexu 0, Kp v indexu 1)
-            kpForecast = kpData.slice(-8).map(row => {
-                let val = parseFloat(row[1]);
-                if (isNaN(val) || val < 0) val = 0;
-                return {
+            if (kpIndex !== -1) {
+                // Najdeme poslední platnou hodnotu pro aktuální Kp
+                for (let i = kpData.length - 1; i >= 1; i--) {
+                    const val = parseFloat(kpData[i][kpIndex]);
+                    if (!isNaN(val)) {
+                        kp = val.toFixed(1);
+                        break;
+                    }
+                }
+
+                // Vytáhneme posledních 8 záznamů pro časovou osu
+                kpForecast = kpData.slice(-8).map(row => ({
                     time: row[0],
-                    kp: val,
-                    status: row[3] || 'observed'
-                };
-            });
+                    kp: parseFloat(row[kpIndex]) || 0,
+                    status: row[2] || 'observed'
+                }));
+            }
         }
 
         res.setHeader('Access-Control-Allow-Origin', '*');
