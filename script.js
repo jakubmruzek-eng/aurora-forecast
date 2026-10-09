@@ -59,47 +59,60 @@ async function fetchAuroraData() {
 }
 
 function initLocationAndWeather() {
-    const defaultLat = 66.5039;
-    const defaultLon = 25.7294;
-    const defaultName = "Rovaniemi, Finland";
-
-    if (navigator.geolocation && (window.location.protocol === 'https:' || window.location.hostname === 'localhost')) {
+    if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 fetchWeatherAndLocation(position.coords.latitude, position.coords.longitude);
             },
-            () => {
-                fetchWeatherAndLocation(defaultLat, defaultLon, defaultName);
+            (error) => {
+                console.warn('GPS přístup odepřen nebo nedostupný', error);
+                const mainTitleEl = document.getElementById('locationTitleMain');
+                if (mainTitleEl) mainTitleEl.innerText = `📍 Location access required`;
             },
-            { timeout: 10000 }
+            { timeout: 10000, enableHighAccuracy: true }
         );
     } else {
-        fetchWeatherAndLocation(defaultLat, defaultLon, defaultName);
+        const mainTitleEl = document.getElementById('locationTitleMain');
+        if (mainTitleEl) mainTitleEl.innerText = `📍 Geolocation not supported`;
     }
 }
 
-async function fetchWeatherAndLocation(lat, lon, customName = null) {
+async function fetchWeatherAndLocation(lat, lon) {
     try {
-        let locationName = customName;
-        if (!locationName) {
-            const revRes = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
-            if (revRes.ok) {
-                const revData = await revRes.json();
-                const city = revData.city || revData.locality || revData.principalSubdivision || "Current Location";
-                const country = revData.countryName || "";
-                locationName = country ? `${city}, ${country}` : city;
-            } else {
-                locationName = "Current GPS Location";
+        let locationName = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+        
+        // Získání přesného názvu místa přes OpenStreetMap Nominatim
+        const revRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`, {
+            headers: { 'User-Agent': 'AuroraTracker/1.0' }
+        });
+        
+        if (revRes.ok) {
+            const revData = await revRes.json();
+            if (revData && revData.address) {
+                const addr = revData.address;
+                const place = addr.tourism || addr.village || addr.hamlet || addr.suburb || addr.neighbourhood || addr.city || addr.town || "";
+                const country = addr.country || "";
+                if (place) {
+                    locationName = country ? `${place}, ${country}` : place;
+                }
             }
         }
 
-        const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m&hourly=temperature_2m,cloud_cover,wind_speed_10m&forecast_days=2`);
+        // Načtení počasí z oficiálního Yr.no (MET Norway) API
+        const weatherRes = await fetch(`https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${lat}&lon=${lon}`, {
+            headers: { 'User-Agent': 'AuroraTrackerApp/1.0 (contact@example.com)' }
+        });
+
         if (weatherRes.ok) {
             const data = await weatherRes.json();
-            const temp = data.current.temperature_2m;
-            const clouds = data.current.cloud_cover;
-            const wind = data.current.wind_speed_10m;
-            const humidity = data.current.relative_humidity_2m;
+            const timeseries = data.properties.timeseries;
+            if (!timeseries || timeseries.length === 0) return;
+
+            const currentDetails = timeseries[0].data.instant.details;
+            const temp = currentDetails.air_temperature;
+            const clouds = currentDetails.cloud_area_fraction;
+            const wind = currentDetails.wind_speed;
+            const humidity = currentDetails.relative_humidity;
 
             const dewPoint = (temp - ((100 - humidity) / 5)).toFixed(1);
 
@@ -118,51 +131,44 @@ async function fetchWeatherAndLocation(lat, lon, customName = null) {
             const dewEl = document.getElementById('dewVal');
             if (dewEl) dewEl.innerText = `${dewPoint} °C`;
 
-            if (data.hourly && data.hourly.time) {
-                renderHourlyWeather(data.hourly.time, data.hourly.cloud_cover, data.hourly.temperature_2m, data.hourly.wind_speed_10m);
-            }
+            renderYrHourlyWeather(timeseries);
         }
     } catch (e) {
-        console.warn('Počasí nedostupné', e);
+        console.warn('Počasí z Yr.no nedostupné', e);
     }
 }
 
-function renderHourlyWeather(times, clouds, temps, winds) {
+function renderYrHourlyWeather(timeseries) {
     const container = document.getElementById('yrIframe');
     if (!container) return;
 
     let html = `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; max-height: 350px; overflow-y: auto;">`;
     
-    const nowHour = new Date().getHours();
     let count = 0;
+    for (let i = 0; i < timeseries.length && count < 24; i++) {
+        const entry = timeseries[i];
+        const timeStr = entry.time; // např. "2026-10-09T15:00:00Z"
+        const details = entry.data.instant.details;
+        
+        const timeLabel = timeStr.substring(11, 16);
+        const temp = details.air_temperature;
+        const cloud = details.cloud_area_fraction;
+        const wind = details.wind_speed;
 
-    for (let i = 0; i < times.length && count < 24; i++) {
-        const timeStr = times[i];
-        const hour = parseInt(timeStr.substring(11, 13));
-        const dayMatch = timeStr.substring(0, 10);
-        const todayMatch = new Date().toISOString().substring(0, 10);
+        let cloudIcon = '☀️';
+        if (cloud > 20 && cloud <= 70) cloudIcon = '⛅';
+        else if (cloud > 70) cloudIcon = '☁️';
 
-        if (hour >= nowHour || dayMatch !== todayMatch) {
-            const timeLabel = timeStr.substring(11, 16);
-            const cloud = clouds[i];
-            const temp = temps[i];
-            const wind = winds[i];
-
-            let cloudIcon = '☀️';
-            if (cloud > 20 && cloud <= 70) cloudIcon = '⛅';
-            else if (cloud > 70) cloudIcon = '☁️';
-
-            html += `
-                <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; text-align: center;">
-                    <div style="font-size: 0.8rem; color: #a0aec0; font-weight: 600;">${timeLabel}</div>
-                    <div style="font-size: 1.3rem; margin: 4px 0;">${cloudIcon}</div>
-                    <div style="font-size: 0.9rem; font-weight: 700; color: #fff;">${temp}°C</div>
-                    <div style="font-size: 0.75rem; color: #4ef0c6; margin-top: 2px;">☁️ ${cloud}%</div>
-                    <div style="font-size: 0.7rem; color: #a0aec0;">💨 ${wind} m/s</div>
-                </div>
-            `;
-            count++;
-        }
+        html += `
+            <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; text-align: center;">
+                <div style="font-size: 0.8rem; color: #a0aec0; font-weight: 600;">${timeLabel}</div>
+                <div style="font-size: 1.3rem; margin: 4px 0;">${cloudIcon}</div>
+                <div style="font-size: 0.9rem; font-weight: 700; color: #fff;">${temp}°C</div>
+                <div style="font-size: 0.75rem; color: #4ef0c6; margin-top: 2px;">☁️ ${cloud}%</div>
+                <div style="font-size: 0.7rem; color: #a0aec0;">💨 ${wind} m/s</div>
+            </div>
+        `;
+        count++;
     }
     html += `</div>`;
     container.innerHTML = html;
