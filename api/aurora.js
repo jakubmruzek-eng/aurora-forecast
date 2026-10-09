@@ -72,22 +72,16 @@ module.exports = async function handler(req, res) {
         else if (speed > 450) kp = 3.0;
         else kp = 2.0;
 
-        // Generování časové osy přesně od půlnoci aktuálního dne (48 hodin / 16 bloků po 3 hodinách)
+        // Generování časové osy od půlnoci aktuálního dne (48 hodin / 16 bloků po 3 hodinách)
         const kpForecast = [];
         const now = new Date();
-        
-        // Nastavení na 00:00:00 dnešního dne a posun o pár bloků dozadu (např. 2 bloky = 6 hodin), 
-        // aby uživatel viděl i začátek dne, a zbytek do budoucna (celkem 16 bloků)
         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-        
-        // Chceme začít např. 6 hodin před půlnocí nebo rovnou od půlnoci (zde startujeme od 00:00 dneška)
         const baseTime = startOfDay.getTime();
 
         for (let i = 0; i < 16; i++) {
             const blockTime = new Date(baseTime + (i * 3 * 3600 * 1000));
             const isPast = blockTime.getTime() < now.getTime();
             
-            // Mírná dynamická variace hodnot Kp pro jednotlivé bloky
             let blockKp = kp;
             if (i % 3 === 1) blockKp = Math.max(1.0, kp - 0.3);
             if (i % 3 === 2) blockKp = kp + 0.2;
