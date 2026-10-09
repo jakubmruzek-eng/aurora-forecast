@@ -14,13 +14,14 @@
 
     <div class="app-layout">
         <nav class="navbar">
-            <div class="brand">
-                <span class="logo-icon">🌌</span> 
+            <div class="brand" style="display: flex; align-items: center; gap: 10px;">
+                <img src="logo.png" alt="Logo" style="width: 34px; height: 34px; border-radius: 50%; object-fit: cover;">
                 <span>AURORA TRACKER</span>
                 <span class="author-tag">by Mrůzek</span>
             </div>
             <ul class="nav-links">
                 <li class="active" id="nav-aurora"><a href="#" onclick="showSection(event, 'aurora')">Live Status</a></li>
+                <li id="nav-forecast-tab"><a href="#" onclick="showSection(event, 'forecast-tab')">Aurora Forecast</a></li>
                 <li id="nav-forecast"><a href="#" onclick="showSection(event, 'forecast')">Sun Activity</a></li>
                 <li id="nav-weather"><a href="#" onclick="showSection(event, 'weather')">Weather & Clouds</a></li>
                 <li id="nav-cameras"><a href="#" onclick="showSection(event, 'cameras')">Live Webcams</a></li>
@@ -69,9 +70,45 @@
 
                 <!-- Weather & Moon widget -->
                 <div class="location-widget" id="locationWidget" style="margin-top: 20px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 18px; text-align: center;">
-                    <div class="location-title" style="font-weight: 700; color: #4ef0c6; margin-bottom: 6px;">📍 Rovaniemi, Finland</div>
+                    <div class="location-title" id="locationTitleMain" style="font-weight: 700; color: #4ef0c6; margin-bottom: 6px;">📍 Rovaniemi, Finland</div>
                     <div class="location-details" id="weatherInfo" style="font-size: 0.9rem; color: #cbd5e0;">Loading weather...</div>
                     <div class="moon-details" id="moonInfo" style="font-size: 0.85rem; color: #a0aec0; margin-top: 6px;">Calculating moon phase...</div>
+                </div>
+            </section>
+
+            <!-- SECTION: AURORA FORECAST & G-SCALE (Styl Aurora Scout) -->
+            <section id="forecast-tab" class="page-section">
+                <header class="header">
+                    <h1>AURORA FORECAST & G-SCALE</h1>
+                    <p class="subtitle">Hourly geomagnetic storm timeline (Aurora Scout Style)</p>
+                </header>
+
+                <div class="status-card" id="forecastStatusCard">
+                    <h2>NOAA G-SCALE FORECAST</h2>
+                    <div class="activity-level" id="forecastGLevel">Calculating...</div>
+                    <p class="activity-desc" id="forecastGDesc">Based on current planetary Kp index</p>
+                </div>
+
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <h3>Expected Kp Index</h3>
+                        <div class="value" id="forecastKpVal">--</div>
+                        <span class="subtext">Global activity indicator</span>
+                    </div>
+                    <div class="metric-card">
+                        <h3>Storm Scale</h3>
+                        <div class="value" id="forecastScaleVal">G0</div>
+                        <span class="subtext">G1 (Minor) to G5 (Extreme)</span>
+                    </div>
+                </div>
+
+                <!-- Časová osa ve stylu Aurora Scout -->
+                <div class="forecast-card" style="margin-top: 20px;">
+                    <h3>🕒 Geomagnetic Timeline (3-Hour Blocks)</h3>
+                    <p class="card-desc">Detailed storm breakdown step-by-step</p>
+                    <div id="timelineContainer" style="display: flex; flex-direction: column; gap: 8px; margin-top: 15px;">
+                        <div class="loading-text">Loading forecast timeline...</div>
+                    </div>
                 </div>
             </section>
 
@@ -135,7 +172,7 @@
                 <!-- Hourly Weather Forecast -->
                 <div class="forecast-card" style="margin-top: 20px;">
                     <h3 id="yrLocationTitle">Hourly forecast for your location</h3>
-                    <p class="card-desc">Detailed meteorological forecast based on your current GPS position</p>
+                    <p class="card-desc" id="yrLocationSub">Detailed meteorological forecast based on your current GPS position</p>
                     <div id="yrIframe" style="background: rgba(9, 13, 22, 0.6); border-radius: 10px; padding: 10px; min-height: 120px;">
                         <div class="loading-text">Loading hourly forecast...</div>
                     </div>
@@ -186,7 +223,7 @@
 
             <footer class="footer">
                 <p>Last update: <span id="lastUpdate">--:--:--</span></p>
-                <p class="source">Data sourced from FMI, NOAA OVATION & SWPC | Created by Mrůzek</p>
+                <p class="source">Data sourced from Foreca, NOAA OVATION & SWPC | Created by Mrůzek</p>
             </footer>
         </main>
     </div>

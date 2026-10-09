@@ -41,20 +41,16 @@ module.exports = async function handler(req, res) {
         let speed = 0;
         let density = 0;
         let kp = '2.0';
+        let kpForecast = [];
 
-        // 1. Bz z rtsw_mag_1m.json (seřazeno podle time_tag od nejnovějšího)
         if (Array.isArray(magData) && magData.length > 0) {
             const sortedMag = magData.slice().sort((a, b) => new Date(b.time_tag) - new Date(a.time_tag));
             for (const item of sortedMag) {
                 const parsedBz = parseValidNumber(item?.bz_gsm);
-                if (parsedBz !== null) {
-                    bz = parsedBz;
-                    break;
-                }
+                if (parsedBz !== null) { bz = parsedBz; break; }
             }
         }
 
-        // 2. Rychlost a Hustota z rtsw_wind_1m.json
         if (Array.isArray(windData) && windData.length > 0) {
             const sortedWind = windData.slice().sort((a, b) => new Date(b.time_tag) - new Date(a.time_tag));
             for (const item of sortedWind) {
@@ -70,7 +66,6 @@ module.exports = async function handler(req, res) {
             }
         }
 
-        // 3. Kp index z noaa-planetary-k-index.json (2D pole: [ ["time_tag", "kp", ...], ... ])
         if (Array.isArray(kpData) && kpData.length > 1) {
             for (let i = kpData.length - 1; i >= 1; i--) {
                 const row = kpData[i];
@@ -80,12 +75,17 @@ module.exports = async function handler(req, res) {
                     break;
                 }
             }
+            kpForecast = kpData.slice(-8).map(row => ({
+                time: row[0],
+                kp: parseValidNumber(row[1]) || 0,
+                status: row[2]
+            }));
         }
 
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate');
 
-        return res.status(200).json({ bz, speed, density, kp });
+        return res.status(200).json({ bz, speed, density, kp, kpForecast });
     } catch (error) {
         return res.status(500).json({ error: 'Failed to parse NOAA data', details: error.message });
     }

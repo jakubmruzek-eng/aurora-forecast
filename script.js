@@ -37,7 +37,8 @@ async function fetchAuroraData() {
             bz: parseFloat(data.bz),
             speed: parseFloat(data.speed),
             density: parseFloat(data.density),
-            kp: parseFloat(data.kp)
+            kp: parseFloat(data.kp),
+            kpForecast: data.kpForecast
         });
     } catch (e) {
         console.warn('Problém s načtením API, zkusí se znovu', e);
@@ -102,7 +103,6 @@ async function fetchWeatherAndLocation(lat, lon, customName = null) {
 
             const dewPoint = (temp - ((100 - humidity) / 5)).toFixed(1);
 
-            // Aktualizace názvu lokality v horním widgetu
             const mainTitleEl = document.getElementById('locationTitleMain');
             if (mainTitleEl) mainTitleEl.innerText = `📍 ${locationName}`;
 
@@ -118,11 +118,9 @@ async function fetchWeatherAndLocation(lat, lon, customName = null) {
             const dewEl = document.getElementById('dewVal');
             if (dewEl) dewEl.innerText = `${dewPoint} °C`;
             
-            // Dynamický nadpis předpovědi
             const yrTitleEl = document.getElementById('yrLocationTitle');
             if (yrTitleEl) yrTitleEl.innerText = `Hourly forecast for ${locationName}`;
 
-            // Dynamický podnadpis předpovědi
             const yrSubEl = document.getElementById('yrLocationSub');
             if (yrSubEl) yrSubEl.innerText = `Detailed meteorological forecast for ${locationName}`;
 
@@ -208,7 +206,7 @@ function updateMoonPhase() {
     }
 }
 
-function updateAuroraUI({ bz, speed, density, kp }) {
+function updateAuroraUI({ bz, speed, density, kp, kpForecast }) {
     const formattedBz = (bz > 0 ? '+' : '') + Number(bz).toFixed(1);
 
     const bzEl = document.getElementById('bzVal');
@@ -222,6 +220,63 @@ function updateAuroraUI({ bz, speed, density, kp }) {
     
     const kpEl = document.getElementById('kpVal');
     if (kpEl) kpEl.innerText = `${Number(kp).toFixed(1)}`;
+
+    const kpNum = parseFloat(kp) || 0;
+    let gScaleText = "G0 (Quiet)";
+    let gScaleDesc = "Normal background geomagnetic conditions.";
+    if (kpNum >= 9) { gScaleText = "G5 (Extreme)"; gScaleDesc = "Widespread blackout, severe storms worldwide."; }
+    else if (kpNum >= 8) { gScaleText = "G4 (Severe)"; gScaleDesc = "Extremely active conditions, widespread auroras."; }
+    else if (kpNum >= 7) { gScaleText = "G3 (Strong)"; gScaleDesc = "Strong geomagnetic storm, high latitude visibility."; }
+    else if (kpNum >= 6) { gScaleText = "G2 (Moderate)"; gScaleDesc = "Moderate storm conditions, great northern displays."; }
+    else if (kpNum >= 5) { gScaleText = "G1 (Minor)"; gScaleDesc = "Minor storm, elevated activity in Lapland."; }
+
+    const forecastKpEl = document.getElementById('forecastKpVal');
+    if (forecastKpEl) forecastKpEl.innerText = kpNum.toFixed(1);
+
+    const forecastScaleEl = document.getElementById('forecastScaleVal');
+    if (forecastScaleEl) forecastScaleEl.innerText = gScaleText;
+
+    const forecastGLevelEl = document.getElementById('forecastGLevel');
+    if (forecastGLevelEl) forecastGLevelEl.innerText = gScaleText;
+
+    const forecastGDescEl = document.getElementById('forecastGDesc');
+    if (forecastGDescEl) forecastGDescEl.innerText = gScaleDesc;
+
+    // Vykreslení časové osy ve stylu Aurora Scout
+    const timelineEl = document.getElementById('timelineContainer');
+    if (timelineEl) {
+        if (kpForecast && Array.isArray(kpForecast) && kpForecast.length > 0) {
+            let timelineHtml = '';
+            kpForecast.forEach(item => {
+                const dateObj = new Date(item.time);
+                const timeStr = !isNaN(dateObj) ? dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : item.time.substring(11, 16);
+                const val = parseFloat(item.kp).toFixed(1);
+                
+                let scaleStr = "Quiet";
+                let badgeColor = "#718096";
+                if (val >= 9) { scaleStr = "G5 Extreme"; badgeColor = "#f56565"; }
+                else if (val >= 8) { scaleStr = "G4 Severe"; badgeColor = "#f56565"; }
+                else if (val >= 7) { scaleStr = "G3 Strong"; badgeColor = "#ed8936"; }
+                else if (val >= 6) { scaleStr = "G2 Moderate"; badgeColor = "#ecc94b"; }
+                else if (val >= 5) { scaleStr = "G1 Minor Storm"; badgeColor = "#48bb78"; }
+
+                timelineHtml += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 12px 16px;">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <span style="font-size: 0.95rem; font-weight: 700; color: #4ef0c6; min-width: 55px;">${timeStr}</span>
+                            <span style="font-size: 0.95rem; color: #e2e8f0; font-weight: 600;">🌐 Kp ${val}</span>
+                        </div>
+                        <div>
+                            <span style="font-size: 0.8rem; font-weight: 700; color: ${badgeColor}; background: rgba(255,255,255,0.06); padding: 4px 10px; border-radius: 6px;">${scaleStr}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            timelineEl.innerHTML = timelineHtml;
+        } else {
+            timelineEl.innerHTML = `<div class="loading-text">Žádná data pro časovou osu nebyla vrácena.</div>`;
+        }
+    }
 
     const statusCard = document.getElementById('statusCard');
     const levelEl = document.getElementById('activityLevel');
@@ -242,7 +297,6 @@ function updateAuroraUI({ bz, speed, density, kp }) {
     else if (speed >= 500) score += 20;
     else if (speed >= 420) score += 10;
 
-    const kpNum = parseFloat(kp) || 0;
     if (kpNum >= 6) score += 30;
     else if (kpNum >= 4) score += 20;
     else if (kpNum >= 2.5) score += 10;
