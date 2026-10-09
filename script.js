@@ -26,7 +26,7 @@ function showSection(e, sectionId) {
 
 async function fetchAuroraData() {
     try {
-        const response = await fetch(`https://auroratrack-rho.vercel.app/api/aurora?t=${Date.now()}`, {
+        const response = await fetch(`https://aurora-forecast-blond.vercel.app/api/aurora?t=${Date.now()}`, {
             cache: 'no-store'
         });
         if (!response.ok) throw new Error('API response failed');
@@ -41,7 +41,7 @@ async function fetchAuroraData() {
             kpForecast: data.kpForecast
         });
     } catch (e) {
-        console.warn('Problém s načtením API, zkusí se znovu', e);
+        console.warn('Problém s načtením API', e);
     }
 
     initLocationAndWeather();
@@ -117,12 +117,6 @@ async function fetchWeatherAndLocation(lat, lon, customName = null) {
 
             const dewEl = document.getElementById('dewVal');
             if (dewEl) dewEl.innerText = `${dewPoint} °C`;
-            
-            const yrTitleEl = document.getElementById('yrLocationTitle');
-            if (yrTitleEl) yrTitleEl.innerText = `Hourly forecast for ${locationName}`;
-
-            const yrSubEl = document.getElementById('yrLocationSub');
-            if (yrSubEl) yrSubEl.innerText = `Detailed meteorological forecast for ${locationName}`;
 
             if (data.hourly && data.hourly.time) {
                 renderHourlyWeather(data.hourly.time, data.hourly.cloud_cover, data.hourly.temperature_2m, data.hourly.wind_speed_10m);
@@ -242,14 +236,19 @@ function updateAuroraUI({ bz, speed, density, kp, kpForecast }) {
     const forecastGDescEl = document.getElementById('forecastGDesc');
     if (forecastGDescEl) forecastGDescEl.innerText = gScaleDesc;
 
-    // Vykreslení časové osy ve stylu Aurora Scout
+    // Vykreslení časové osy (3hodinové bloky NOAA formát 00-03 UT)
     const timelineEl = document.getElementById('timelineContainer');
     if (timelineEl) {
         if (kpForecast && Array.isArray(kpForecast) && kpForecast.length > 0) {
             let timelineHtml = '';
             kpForecast.forEach(item => {
                 const dateObj = new Date(item.time);
-                const timeStr = !isNaN(dateObj) ? dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : item.time.substring(11, 16);
+                const dateStr = !isNaN(dateObj) ? `${String(dateObj.getDate()).padStart(2, '0')}.${String(dateObj.getMonth() + 1).padStart(2, '0')}.` : '';
+                
+                const startHour = !isNaN(dateObj) ? dateObj.getUTCHours() : 0;
+                const endHour = (startHour + 3) % 24;
+                const slotStr = `${String(startHour).padStart(2, '0')}-${String(endHour).padStart(2, '0')} UT`;
+
                 const val = parseFloat(item.kp).toFixed(1);
                 
                 let scaleStr = "Quiet";
@@ -263,11 +262,12 @@ function updateAuroraUI({ bz, speed, density, kp, kpForecast }) {
                 timelineHtml += `
                     <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 12px 16px;">
                         <div style="display: flex; align-items: center; gap: 15px;">
-                            <span style="font-size: 0.95rem; font-weight: 700; color: #4ef0c6; min-width: 55px;">${timeStr}</span>
+                            <span style="font-size: 0.85rem; color: #a0aec0; min-width: 45px;">${dateStr}</span>
+                            <span style="font-size: 0.95rem; font-weight: 700; color: #4ef0c6; min-width: 90px;">${slotStr}</span>
                             <span style="font-size: 0.95rem; color: #e2e8f0; font-weight: 600;">🌐 Kp ${val}</span>
                         </div>
                         <div>
-                            <span style="font-size: 0.8rem; font-weight: 700; color: ${badgeColor}; background: rgba(255,255,255,0.06); padding: 4px 10px; border-radius: 6px;">${scaleStr}</span>
+                            <span style="font-size: 0.8rem; font-weight: 700; color: ${badgeColor}; background: rgba(255,255,255,0.06); padding: 4px 10px; border-radius: 6px;">${scaleStr} (${item.status})</span>
                         </div>
                     </div>
                 `;
@@ -287,7 +287,6 @@ function updateAuroraUI({ bz, speed, density, kp, kpForecast }) {
     statusCard.className = 'status-card';
 
     let score = 0;
-
     if (bz <= -10) score += 40;
     else if (bz <= -5) score += 25;
     else if (bz <= -2) score += 15;
