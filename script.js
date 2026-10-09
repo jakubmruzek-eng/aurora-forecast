@@ -81,7 +81,6 @@ async function fetchWeatherAndLocation(lat, lon) {
     try {
         let locationName = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
         
-        // Získání přesného názvu místa přes OpenStreetMap Nominatim
         const revRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`, {
             headers: { 'User-Agent': 'AuroraTracker/1.0' }
         });
@@ -98,7 +97,6 @@ async function fetchWeatherAndLocation(lat, lon) {
             }
         }
 
-        // Načtení počasí z oficiálního Yr.no (MET Norway) API
         const weatherRes = await fetch(`https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${lat}&lon=${lon}`, {
             headers: { 'User-Agent': 'AuroraTrackerApp/1.0 (contact@example.com)' }
         });
@@ -142,15 +140,19 @@ function renderYrHourlyWeather(timeseries) {
     const container = document.getElementById('yrIframe');
     if (!container) return;
 
-    let html = `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; max-height: 350px; overflow-y: auto;">`;
+    // Nastaveno na flexbox v jednom řádku s horizontálním scrollováním
+    let html = `<div style="display: flex; flex-direction: row; gap: 10px; overflow-x: auto; padding-bottom: 8px; width: 100%;">`;
     
     let count = 0;
     for (let i = 0; i < timeseries.length && count < 24; i++) {
         const entry = timeseries[i];
-        const timeStr = entry.time; // např. "2026-10-09T15:00:00Z"
+        const timeStr = entry.time;
         const details = entry.data.instant.details;
         
+        const dateObj = new Date(timeStr);
+        const dateLabel = !isNaN(dateObj) ? `${String(dateObj.getDate()).padStart(2, '0')}.${String(dateObj.getMonth() + 1).padStart(2, '0')}.` : '';
         const timeLabel = timeStr.substring(11, 16);
+        
         const temp = details.air_temperature;
         const cloud = details.cloud_area_fraction;
         const wind = details.wind_speed;
@@ -160,8 +162,9 @@ function renderYrHourlyWeather(timeseries) {
         else if (cloud > 70) cloudIcon = '☁️';
 
         html += `
-            <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; text-align: center;">
-                <div style="font-size: 0.8rem; color: #a0aec0; font-weight: 600;">${timeLabel}</div>
+            <div style="flex: 0 0 100px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; text-align: center;">
+                <div style="font-size: 0.75rem; color: #a0aec0; margin-bottom: 2px;">${dateLabel}</div>
+                <div style="font-size: 0.85rem; color: #4ef0c6; font-weight: 700;">${timeLabel}</div>
                 <div style="font-size: 1.3rem; margin: 4px 0;">${cloudIcon}</div>
                 <div style="font-size: 0.9rem; font-weight: 700; color: #fff;">${temp}°C</div>
                 <div style="font-size: 0.75rem; color: #4ef0c6; margin-top: 2px;">☁️ ${cloud}%</div>
