@@ -43,19 +43,14 @@ module.exports = async function handler(req, res) {
         let kp = '2.0';
         let kpForecast = [];
 
-        // 1. Bz z rtsw_mag_1m.json[cite: 6]
         if (Array.isArray(magData) && magData.length > 0) {
             const sortedMag = magData.slice().sort((a, b) => new Date(b.time_tag) - new Date(a.time_tag));
             for (const item of sortedMag) {
                 const parsedBz = parseValidNumber(item?.bz_gsm);
-                if (parsedBz !== null) {
-                    bz = parsedBz;
-                    break;
-                }
+                if (parsedBz !== null) { bz = parsedBz; break; }
             }
         }
 
-        // 2. Rychlost a Hustota z rtsw_wind_1m.json[cite: 6]
         if (Array.isArray(windData) && windData.length > 0) {
             const sortedWind = windData.slice().sort((a, b) => new Date(b.time_tag) - new Date(a.time_tag));
             for (const item of sortedWind) {
@@ -71,7 +66,6 @@ module.exports = async function handler(req, res) {
             }
         }
 
-        // 3. Kp index a forecast z noaa-planetary-k-index.json[cite: 6]
         if (Array.isArray(kpData) && kpData.length > 1) {
             for (let i = kpData.length - 1; i >= 1; i--) {
                 const row = kpData[i];
@@ -82,16 +76,18 @@ module.exports = async function handler(req, res) {
                 }
             }
 
-            // Vezmeme posledních 8 řádků a bezpečně vytáhneme hodnotu z indexu 1
-            const sliceRows = kpData.slice(-8);
-            kpForecast = sliceRows.map(row => {
-                const val = parseFloat(row[1]);
+            const rows = kpData.slice(1);
+            kpForecast = rows.map(row => {
+                const val = parseValidNumber(row[1]);
                 return {
                     time: row[0],
-                    kp: !isNaN(val) ? val : 2.0, // pokud by byl prázdný, dáme fallback 2.0
+                    kp: val !== null ? val : 0,
                     status: row[2] || 'observed'
                 };
-            });
+            }).filter(item => item.kp > 0);
+
+            // Zde zobrazení posledních 16 bloků = cca 48 hodin (2 dny) výhledu/historie
+            kpForecast = kpForecast.slice(-16);
         }
 
         res.setHeader('Access-Control-Allow-Origin', '*');
