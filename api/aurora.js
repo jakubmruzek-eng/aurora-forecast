@@ -22,6 +22,13 @@ function getData(url) {
     });
 }
 
+function parseValidNumber(val) {
+    if (val === null || val === undefined) return null;
+    const num = parseFloat(val);
+    if (isNaN(num) || num <= -900) return null;
+    return num;
+}
+
 module.exports = async function handler(req, res) {
     try {
         const [magData, windData, kpData] = await Promise.all([
@@ -39,8 +46,8 @@ module.exports = async function handler(req, res) {
         if (Array.isArray(magData) && magData.length > 0) {
             const sortedMag = magData.slice().sort((a, b) => new Date(b.time_tag) - new Date(a.time_tag));
             for (const item of sortedMag) {
-                const parsed = parseFloat(item?.bz_gsm);
-                if (!isNaN(parsed) && parsed > -900) { bz = parsed; break; }
+                const parsedBz = parseValidNumber(item?.bz_gsm);
+                if (parsedBz !== null) { bz = parsedBz; break; }
             }
         }
 
@@ -48,40 +55,33 @@ module.exports = async function handler(req, res) {
             const sortedWind = windData.slice().sort((a, b) => new Date(b.time_tag) - new Date(a.time_tag));
             for (const item of sortedWind) {
                 if (speed === 0) {
-                    const s = parseFloat(item?.proton_speed);
-                    if (!isNaN(s) && s > 0) speed = s;
+                    const s = parseValidNumber(item?.proton_speed);
+                    if (s !== null && s > 0) speed = s;
                 }
                 if (density === 0) {
-                    const d = parseFloat(item?.proton_density);
-                    if (!isNaN(d) && d > 0) density = d;
+                    const d = parseValidNumber(item?.proton_density);
+                    if (d !== null && d > 0) density = d;
                 }
                 if (speed > 0 && density > 0) break;
             }
         }
 
         if (Array.isArray(kpData) && kpData.length > 1) {
-            // První řádek je ["time_tag", "kp", "observed", "station_count"]
-            // Zjistíme index sloupce "kp" z hlavičky
-            const header = kpData[0];
-            const kpIndex = header.indexOf('kp');
-
-            if (kpIndex !== -1) {
-                // Najdeme poslední platnou hodnotu pro aktuální Kp
-                for (let i = kpData.length - 1; i >= 1; i--) {
-                    const val = parseFloat(kpData[i][kpIndex]);
-                    if (!isNaN(val)) {
-                        kp = val.toFixed(1);
-                        break;
-                    }
+            for (let i = kpData.length - 1; i >= 1; i--) {
+                const row = kpData[i];
+                const parsedKp = parseValidNumber(row[1]);
+                if (parsedKp !== null) {
+                    kp = parsedKp.toFixed(1);
+                    break;
                 }
-
-                // Vytáhneme posledních 8 záznamů pro časovou osu
-                kpForecast = kpData.slice(-8).map(row => ({
-                    time: row[0],
-                    kp: parseFloat(row[kpIndex]) || 0,
-                    status: row[2] || 'observed'
-                }));
             }
+            
+            // Mapování posledních záznamů pro časovou osu
+            kpForecast = kpData.slice(-8).map(row => ({
+                time: row[0],
+                kp: parseValidNumber(row[1]) || 0,
+                status: row[2] || 'observed'
+            }));
         }
 
         res.setHeader('Access-Control-Allow-Origin', '*');
