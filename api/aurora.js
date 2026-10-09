@@ -1,5 +1,25 @@
 const https = require('https');
 
+function getRawData(url) {
+    return new Promise((resolve) => {
+        const req = https.get(url, { 
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+            timeout: 8000
+        }, (res) => {
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                return getRawData(res.headers.location).then(resolve);
+            }
+            if (res.statusCode !== 200) return resolve(null);
+
+            let rawData = '';
+            res.on('data', chunk => rawData += chunk);
+            res.on('end', () => resolve(rawData));
+        });
+        req.on('error', () => resolve(null));
+        req.on('timeout', () => { req.destroy(); resolve(null); });
+    });
+}
+
 function getData(url) {
     return new Promise((resolve) => {
         const req = https.get(url, { 
@@ -31,10 +51,10 @@ function parseValidNumber(val) {
 
 module.exports = async function handler(req, res) {
     try {
-        const [magData, windData, kpData] = await Promise.all([
+        const [magData, windData, kpRaw] = await Promise.all([
             getData('https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json'),
             getData('https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json'),
-            getData('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json')
+            getRawData('https://services.swpc.noaa.gov/text/planetary-k-index.txt')
         ]);
 
         let bz = 0;
@@ -47,10 +67,7 @@ module.exports = async function handler(req, res) {
             const sortedMag = magData.slice().sort((a, b) => new Date(b.time_tag) - new Date(a.time_tag));
             for (const item of sortedMag) {
                 const parsedBz = parseValidNumber(item?.bz_gsm);
-                if (parsedBz !== null) {
-                    bz = parsedBz;
-                    break;
-                }
+                if (parsedBz !== null) { bz = parsedBz; break; }
             }
         }
 
@@ -69,28 +86,40 @@ module.exports = async function handler(req, res) {
             }
         }
 
-        if (Array.isArray(kpData) && kpData.length > 1) {
-            for (let i = kpData.length - 1; i >= 1; i--) {
-                const row = kpData[i];
-                const parsedKp = parseValidNumber(row[1]);
-                if (parsedKp !== null) {
-                    kp = parsedKp.toFixed(1);
-                    break;
+        // Zpracování čistého textového výstupu NOAA K-indexu
+        if (kpRaw) {
+            const lines = kpRaw.split('\n');
+            for (const line of lines) {
+                const trimmed = line.trim();
+                // Přeskočíme komentáře a hlavičky
+                if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith(':') || trimmed.includes('NOAA')) continue;
+                
+                const parts = trimmed.split(/\s+/);
+                if (parts.length >= 5) {
+                    // Formát NOAA textu: YYYY MM DD HH Kp ...
+                    const year = parts[0];
+                    const month = parts[1].padStart(2, '0');
+                    const day = parts[2].padStart(2, '0');
+                    const hour = parts[3].padStart(2, '0');
+                    const kpVal = parseFloat(parts[4]);
+
+                    if (!isNaN(kpVal)) {
+                        const timeStr = `${year}-${month}-${day}T${hour}:00:00Z`;
+                        kpForecast.push({
+                            time: timeStr,
+                            kp: kpVal,
+                            status: parts[5] || 'observed'
+                        });
+                    }
                 }
             }
 
-            // Zpracujeme řádky, ověříme existenci času a nevyhazujeme nuly
-            const rows = kpData.slice(1);
-            kpForecast = rows.map(row => {
-                const val = parseValidNumber(row[1]);
-                return {
-                    time: row[0],
-                    kp: val !== null ? val : 0,
-                    status: row[2] || 'observed'
-                };
-            }).filter(item => item.time);
+            // Vezmeme aktuální Kp z posledního platného záznamu
+            if (kpForecast.length > 0) {
+                kp = kpForecast[kpForecast.length - 1].kp.toFixed(1);
+            }
 
-            // Vezmeme posledních 16 bloků (cca 48 hodin / 2 dny)
+            // Ořízneme na posledních 16 bloků (cca 48 hodin / 2 dny)
             kpForecast = kpForecast.slice(-16);
         }
 
