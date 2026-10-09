@@ -92,7 +92,6 @@ module.exports = async function handler(req, res) {
                     continue;
                 }
                 if (capturing) {
-                    // Zachycení riadku s dátumami (napr. "Oct 09    Oct 10    Oct 11")
                     if (line.includes('Oct') || line.includes('Nov') || line.includes('Dec') || line.includes('Jan') || line.includes('Feb') || line.includes('Mar') || line.includes('Apr') || line.includes('May') || line.includes('Jun') || line.includes('Jul') || line.includes('Aug') || line.includes('Sep')) {
                         const matches = line.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov)\s+\d+/g);
                         if (matches && matches.length > 0) {
@@ -104,7 +103,6 @@ module.exports = async function handler(req, res) {
                         continue;
                     }
 
-                    // Spracovanie riadkov s časovými blokmi (napr. "00-03UT")
                     if (line.includes('UT') && dates.length > 0) {
                         const parts = line.trim().split(/\s+/);
                         if (parts.length >= 2) {
@@ -114,7 +112,6 @@ module.exports = async function handler(req, res) {
                             let partIdx = 1;
                             for (let d = 0; d < dates.length; d++) {
                                 if (partIdx < parts.length) {
-                                    // Preskočíme prípadné texty v zátvorkách ako "(G1)"
                                     while (partIdx < parts.length && parts[partIdx].startsWith('(')) {
                                         partIdx++;
                                     }
@@ -122,13 +119,14 @@ module.exports = async function handler(req, res) {
                                         const kpVal = parseFloat(parts[partIdx]);
                                         if (!isNaN(kpVal) && kpVal >= 0 && dates[d]) {
                                             const { month, day } = dates[d];
-                                            const dateObj = new Date(Date.UTC(currentYear, month, day, startHour, 0, 0));
+                                            // Použijeme čistý lokální string, aby se čas v prohlížeči neposouval
+                                            const dateStr = `${currentYear}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(startHour).padStart(2, '0')}:00:00`;
                                             const nowTime = Date.now();
                                             
                                             kpForecast.push({
-                                                time: dateObj.toISOString(),
+                                                time: dateStr,
                                                 kp: kpVal,
-                                                status: dateObj.getTime() <= nowTime ? 'observed' : 'predicted'
+                                                status: new Date(dateStr).getTime() <= nowTime ? 'observed' : 'predicted'
                                             });
                                         }
                                     }
@@ -138,7 +136,6 @@ module.exports = async function handler(req, res) {
                         }
                     }
 
-                    // Koniec tabuľky
                     if (line.trim() === '' && kpForecast.length > 0) {
                         capturing = false;
                     }
@@ -153,7 +150,7 @@ module.exports = async function handler(req, res) {
             let currentIndex = kpForecast.findIndex(item => new Date(item.time).getTime() > nowTime);
             if (currentIndex === -1) currentIndex = Math.max(0, kpForecast.length - 12);
             
-            let startIndex = Math.max(0, currentIndex - 6);
+            let startIndex = Math.max(0, currentIndex - 4);
             let endIndex = startIndex + 16;
             kpForecast = kpForecast.slice(startIndex, endIndex);
 
