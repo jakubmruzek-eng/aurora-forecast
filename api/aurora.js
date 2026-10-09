@@ -67,29 +67,26 @@ module.exports = async function handler(req, res) {
         }
 
         if (Array.isArray(kpData) && kpData.length > 1) {
-            const header = kpData[0];
-            let timeIdx = header.indexOf('time_tag');
-            if (timeIdx === -1) timeIdx = 0;
-            let kpIdx = header.indexOf('kp');
-            if (kpIdx === -1) kpIdx = 1;
-
             const rows = kpData.slice(1);
-            
+
             for (let i = rows.length - 1; i >= 0; i--) {
-                const val = parseValidNumber(rows[i][kpIdx]);
+                const val = parseValidNumber(rows[i][1]);
                 if (val !== null) {
                     kp = val.toFixed(1);
                     break;
                 }
             }
 
-            kpForecast = rows.map(row => ({
-                time: row[timeIdx],
-                kp: parseValidNumber(row[kpIdx]) !== null ? parseValidNumber(row[kpIdx]) : 0,
-                status: row[2] || 'observed'
-            })).filter(item => item.time);
+            kpForecast = rows.map(row => {
+                const val = parseValidNumber(row[1]);
+                return {
+                    time: row[0],
+                    kp: val !== null ? val : 0,
+                    status: row[2] || 'observed'
+                };
+            }).filter(item => item.time);
 
-            // Posledných 16 blokov (cca 48 hodín / 2 dni)
+            // Posledních 16 bloků (cca 48 hodin / 2 dny)
             kpForecast = kpForecast.slice(-16);
         }
 
