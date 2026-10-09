@@ -72,21 +72,20 @@ module.exports = async function handler(req, res) {
         if (Array.isArray(kpData) && kpData.length > 1) {
             for (let i = kpData.length - 1; i >= 1; i--) {
                 const row = kpData[i];
-                const parsedKp = parseFloat(row[1]);
-                if (!isNaN(parsedKp)) {
+                const parsedKp = parseValidNumber(row[1]);
+                if (parsedKp !== null) {
                     kp = parsedKp.toFixed(1);
                     break;
                 }
             }
 
-            kpForecast = kpData.slice(-8).map(row => {
-                const val = parseFloat(row[1]);
-                return {
-                    time: row[0],
-                    kp: !isNaN(val) ? val : 0,
-                    status: row[2] || 'observed'
-                };
-            });
+            // Vyfiltrujeme pouze řádky, které mají reálné platné Kp, a vezmeme posledních 8
+            const validRows = kpData.slice(1).filter(row => parseValidNumber(row[1]) !== null);
+            kpForecast = validRows.slice(-8).map(row => ({
+                time: row[0],
+                kp: parseValidNumber(row[1]),
+                status: row[2] || 'observed'
+            }));
         }
 
         res.setHeader('Access-Control-Allow-Origin', '*');
