@@ -47,7 +47,10 @@ module.exports = async function handler(req, res) {
             const sortedMag = magData.slice().sort((a, b) => new Date(b.time_tag) - new Date(a.time_tag));
             for (const item of sortedMag) {
                 const parsedBz = parseValidNumber(item?.bz_gsm);
-                if (parsedBz !== null) { bz = parsedBz; break; }
+                if (parsedBz !== null) {
+                    bz = parsedBz;
+                    break;
+                }
             }
         }
 
@@ -76,6 +79,7 @@ module.exports = async function handler(req, res) {
                 }
             }
 
+            // Zpracujeme řádky, ověříme existenci času a nevyhazujeme nuly
             const rows = kpData.slice(1);
             kpForecast = rows.map(row => {
                 const val = parseValidNumber(row[1]);
@@ -84,9 +88,9 @@ module.exports = async function handler(req, res) {
                     kp: val !== null ? val : 0,
                     status: row[2] || 'observed'
                 };
-            }).filter(item => item.kp > 0);
+            }).filter(item => item.time);
 
-            // Zde zobrazení posledních 16 bloků = cca 48 hodin (2 dny) výhledu/historie
+            // Vezmeme posledních 16 bloků (cca 48 hodin / 2 dny)
             kpForecast = kpForecast.slice(-16);
         }
 
