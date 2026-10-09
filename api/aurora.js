@@ -82,78 +82,79 @@ module.exports = async function handler(req, res) {
         if (forecastText) {
             const lines = forecastText.split('\n');
             let capturing = false;
+            let dates = [];
             let currentYear = new Date().getFullYear();
-            let months = {
-                'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
-                'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
-            };
-
-            // Definice 8 bloků podle NOAA tabulky
-            const blockHours = [
-                { start: 0, label: '00-03 UTC' },
-                { start: 3, label: '03-06 UTC' },
-                { start: 6, label: '06-09 UTC' },
-                { start: 9, label: '09-12 UTC' },
-                { start: 12, label: '12-15 UTC' },
-                { start: 15, label: '15-18 UTC' },
-                { start: 18, label: '18-21 UTC' },
-                { start: 21, label: '21-00 UTC' }
-            ];
+            let months = { 'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5, 'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11 };
 
             for (let line of lines) {
-                if (line.includes('UNIT: Kp')) {
+                if (line.includes('NOAA Kp index breakdown')) {
                     capturing = true;
                     continue;
                 }
                 if (capturing) {
-                    const trimmed = line.trim();
-                    if (!trimmed || trimmed.includes(':') || trimmed.includes('NOAA')) continue;
+                    // Zachycení riadku s dátumami (napr. "Oct 09    Oct 10    Oct 11")
+                    if (line.includes('Oct') || line.includes('Nov') || line.includes('Dec') || line.includes('Jan') || line.includes('Feb') || line.includes('Mar') || line.includes('Apr') || line.includes('May') || line.includes('Jun') || line.includes('Jul') || line.includes('Aug') || line.includes('Sep')) {
+                        const matches = line.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov)\s+\d+/g);
+                        if (matches && matches.length > 0) {
+                            dates = matches.map(m => {
+                                const parts = m.trim().split(/\s+/);
+                                return { month: months[parts[0]], day: parseInt(parts[1], 10) };
+                            });
+                        }
+                        continue;
+                    }
 
-                    const parts = trimmed.split(/\s+/);
-                    if (parts.length >= 10) {
-                        const monthStr = parts[0];
-                        const dayStr = parts[1];
-                        const month = months[monthStr];
-
-                        if (month !== undefined && !isNaN(dayStr)) {
-                            const day = parseInt(dayStr, 10);
+                    // Spracovanie riadkov s časovými blokmi (napr. "00-03UT")
+                    if (line.includes('UT') && dates.length > 0) {
+                        const parts = line.trim().split(/\s+/);
+                        if (parts.length >= 2) {
+                            const timeSlot = parts[0];
+                            const startHour = parseInt(timeSlot.split('-')[0], 10);
                             
-                            for (let i = 0; i < 8; i++) {
-                                // Vyčištění hodnoty od případných popisků jako "(G1)"
-                                const rawVal = parts[2 + i];
-                                const kpVal = parseFloat(rawVal);
-                                
-                                if (!isNaN(kpVal) && kpVal >= 0) {
-                                    const hourInfo = blockHours[i];
-                                    const dateObj = new Date(Date.UTC(currentYear, month, day, hourInfo.start, 0, 0));
-                                    const nowTime = Date.now();
-                                    const blockTime = dateObj.getTime();
-                                    
-                                    kpForecast.push({
-                                        time: dateObj.toISOString(),
-                                        label: `${monthStr} ${day} (${hourInfo.label})`,
-                                        kp: kpVal,
-                                        status: blockTime <= nowTime ? 'observed' : 'predicted'
-                                    });
+                            let partIdx = 1;
+                            for (let d = 0; d < dates.length; d++) {
+                                if (partIdx < parts.length) {
+                                    // Preskočíme prípadné texty v zátvorkách ako "(G1)"
+                                    while (partIdx < parts.length && parts[partIdx].startsWith('(')) {
+                                        partIdx++;
+                                    }
+                                    if (partIdx < parts.length) {
+                                        const kpVal = parseFloat(parts[partIdx]);
+                                        if (!isNaN(kpVal) && kpVal >= 0 && dates[d]) {
+                                            const { month, day } = dates[d];
+                                            const dateObj = new Date(Date.UTC(currentYear, month, day, startHour, 0, 0));
+                                            const nowTime = Date.now();
+                                            
+                                            kpForecast.push({
+                                                time: dateObj.toISOString(),
+                                                kp: kpVal,
+                                                status: dateObj.getTime() <= nowTime ? 'observed' : 'predicted'
+                                            });
+                                        }
+                                    }
                                 }
+                                partIdx++;
                             }
                         }
+                    }
+
+                    // Koniec tabuľky
+                    if (line.trim() === '' && kpForecast.length > 0) {
+                        capturing = false;
                     }
                 }
             }
         }
 
         if (kpForecast.length > 0) {
-            // Seřazení chronologicky
             kpForecast.sort((a, b) => new Date(a.time) - new Date(b.time));
             
-            // Oříznutí na aktuální bloky
             const nowTime = Date.now();
             let currentIndex = kpForecast.findIndex(item => new Date(item.time).getTime() > nowTime);
-            if (currentIndex === -1) currentIndex = kpForecast.length - 12;
+            if (currentIndex === -1) currentIndex = Math.max(0, kpForecast.length - 12);
             
             let startIndex = Math.max(0, currentIndex - 6);
-            let endIndex = startIndex + 12; // 12 bloků přesně pokrývá přehledné 3hodinové okno
+            let endIndex = startIndex + 16;
             kpForecast = kpForecast.slice(startIndex, endIndex);
 
             const activeBlock = kpForecast.find(item => new Date(item.time).getTime() >= nowTime);
