@@ -35,12 +35,12 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px 24px;
+    padding: 16px 20px;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 14px;
     margin-bottom: 24px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 12px;
 }
 
@@ -49,9 +49,10 @@ body {
     align-items: center;
     gap: 8px;
     font-weight: 800;
-    font-size: 1.1rem;
+    font-size: 1.05rem;
     letter-spacing: 1px;
     color: #cbd5e0;
+    flex-shrink: 0;
 }
 
 .logo-icon {
@@ -72,15 +73,18 @@ body {
 .nav-links {
     display: flex;
     list-style: none;
-    gap: 16px;
+    gap: 12px;
+    flex-wrap: nowrap;
+    align-items: center;
 }
 
 .nav-links a {
     color: #a0aec0;
     text-decoration: none;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     font-weight: 600;
     transition: color 0.2s;
+    white-space: nowrap;
 }
 
 .nav-links li.active a, .nav-links a:hover {
@@ -196,10 +200,78 @@ body {
     color: #4ef0c6;
 }
 
-.card-desc {
+/* Instagram Follow Button v IG stylu */
+.ig-follow-btn {
+    display: inline-block;
+    background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 0.95rem;
+    padding: 12px 28px;
+    border-radius: 10px;
+    text-decoration: none;
+    box-shadow: 0 4px 15px rgba(220, 39, 67, 0.3);
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.ig-follow-btn:hover {
+    transform: translateY(-2px);
+    opacity: 0.92;
+}
+
+/* Styly pro Aurora Scout Timeline */
+.scout-timeline {
+    position: relative;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.scout-day-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 10px 16px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #e2e8f0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.scout-moon-header {
     font-size: 0.85rem;
+    color: #4ef0c6;
+    font-weight: 600;
+}
+
+.scout-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    font-size: 0.9rem;
+}
+
+.scout-time-col {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100px;
+    z-index: 1;
+}
+
+.scout-time {
     color: #a0aec0;
-    margin-bottom: 12px;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.scout-desc-col {
+    flex-grow: 1;
+    color: #e2e8f0;
 }
 
 .map-container {
@@ -227,27 +299,6 @@ body {
 
 .main-cam-card {
     padding: 24px;
-}
-
-.video-container.large-video {
-    position: relative;
-    width: 100%;
-    padding-bottom: 56.25%;
-    height: 0;
-    overflow: hidden;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    margin-top: 12px;
-    box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
-}
-
-.video-container iframe {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    border: 0;
 }
 
 .cam-btn {
