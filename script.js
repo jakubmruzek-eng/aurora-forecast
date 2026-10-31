@@ -10,6 +10,13 @@ const TIME_ZONE = "Europe/Helsinki";
 
 let dailySunTimes = {};
 
+function toggleMenu() {
+    const navLinks = document.getElementById('navLinks');
+    if (navLinks) {
+        navLinks.classList.toggle('show');
+    }
+}
+
 function showSection(e, sectionId) {
     if (e && e.preventDefault) e.preventDefault();
 
@@ -31,6 +38,11 @@ function showSection(e, sectionId) {
     const activeNavLi = document.getElementById(`nav-${sectionId}`);
     if (activeNavLi) {
         activeNavLi.classList.add('active');
+    }
+
+    const navLinks = document.getElementById('navLinks');
+    if (navLinks) {
+        navLinks.classList.remove('show');
     }
 }
 
@@ -159,7 +171,14 @@ function initLocationAndWeather() {
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             (position) => {
-                fetchWeatherAndLocation(position.coords.latitude, position.coords.longitude);
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                if (lat < 55 || lat > 75 || lon < 10 || lon > 35) {
+                    console.warn('Detekovaná GPS je mimo Nordic region, používám výchozí Rovaniemi.');
+                    fetchWeatherAndLocation(DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lon, DEFAULT_LOCATION.name);
+                } else {
+                    fetchWeatherAndLocation(lat, lon);
+                }
             },
             (error) => {
                 console.warn('GPS přístup odepřen nebo nedostupný, používám výchozí lokaci (Rovaniemi)', error);
@@ -178,6 +197,7 @@ async function fetchWeatherAndLocation(lat, lon, customName = null) {
         let locationName = customName || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
         
         if (!customName) {
+            // Zvýšen detail a upraveno pořadí, aby se preferovaly lokální části, resorty a osady před celým městem
             const revRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`, {
                 headers: { 'User-Agent': 'AuroraTracker/1.0' }
             });
@@ -186,10 +206,14 @@ async function fetchWeatherAndLocation(lat, lon, customName = null) {
                 const revData = await revRes.json();
                 if (revData && revData.address) {
                     const addr = revData.address;
-                    const place = addr.tourism || addr.village || addr.hamlet || addr.suburb || addr.neighbourhood || addr.city || addr.town || "";
-                    const country = addr.country || "";
-                    if (place) {
-                        locationName = country ? `${place}, ${country}` : place;
+                    // Hledá co nejkonkrétnější bod (turistické místo, resort, osada, vesnice, čtvrť)
+                    const specificPlace = addr.tourism || addr.resort || addr.hamlet || addr.village || addr.suburb || addr.neighbourhood || addr.isolated_dwelling;
+                    const broaderArea = addr.city || addr.town || addr.municipality;
+                    
+                    if (specificPlace) {
+                        locationName = broaderArea && broaderArea !== specificPlace ? `${specificPlace}, ${broaderArea}` : specificPlace;
+                    } else if (broaderArea) {
+                        locationName = broaderArea;
                     }
                 }
             }
