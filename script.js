@@ -127,7 +127,7 @@ async function fetchDailySunTimes() {
             }
         }
     } catch (e) {
-        console.warn("Nepodařilo se stáhnout denní časy slunce z Open-Meteo", e);
+        console.warn("Failed to fetch sun times from Open-Meteo", e);
     }
 }
 
@@ -150,7 +150,7 @@ async function fetchAuroraData() {
             kpForecast: data.kpForecast
         });
     } catch (e) {
-        console.warn('Problém s načtením API', e);
+        console.warn('API fetch problem', e);
     }
 
     initLocationAndWeather();
@@ -174,20 +174,20 @@ function initLocationAndWeather() {
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
                 if (lat < 55 || lat > 75 || lon < 10 || lon > 35) {
-                    console.warn('Detekovaná GPS je mimo Nordic region, používám výchozí Rovaniemi.');
+                    console.warn('Detected GPS is outside Nordic region, using default Rovaniemi.');
                     fetchWeatherAndLocation(DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lon, DEFAULT_LOCATION.name);
                 } else {
                     fetchWeatherAndLocation(lat, lon);
                 }
             },
             (error) => {
-                console.warn('GPS přístup odepřen nebo nedostupný, používám výchozí lokaci (Rovaniemi)', error);
+                console.warn('GPS access denied or unavailable, using default location (Rovaniemi)', error);
                 fetchWeatherAndLocation(DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lon, DEFAULT_LOCATION.name);
             },
             { timeout: 10000, enableHighAccuracy: true }
         );
     } else {
-        console.warn('Geolokace nepodporována, používám výchozí lokaci (Rovaniemi)');
+        console.warn('Geolocation not supported, using default location (Rovaniemi)');
         fetchWeatherAndLocation(DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lon, DEFAULT_LOCATION.name);
     }
 }
@@ -197,7 +197,6 @@ async function fetchWeatherAndLocation(lat, lon, customName = null) {
         let locationName = customName || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
         
         if (!customName) {
-            // Zvýšen detail a upraveno pořadí, aby se preferovaly lokální části, resorty a osady před celým městem
             const revRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`, {
                 headers: { 'User-Agent': 'AuroraTracker/1.0' }
             });
@@ -206,7 +205,6 @@ async function fetchWeatherAndLocation(lat, lon, customName = null) {
                 const revData = await revRes.json();
                 if (revData && revData.address) {
                     const addr = revData.address;
-                    // Hledá co nejkonkrétnější bod (turistické místo, resort, osada, vesnice, čtvrť)
                     const specificPlace = addr.tourism || addr.resort || addr.hamlet || addr.village || addr.suburb || addr.neighbourhood || addr.isolated_dwelling;
                     const broaderArea = addr.city || addr.town || addr.municipality;
                     
@@ -254,7 +252,7 @@ async function fetchWeatherAndLocation(lat, lon, customName = null) {
             renderYrHourlyWeather(timeseries);
         }
     } catch (e) {
-        console.warn('Počasí z Yr.no nedostupné', e);
+        console.warn('Weather from Yr.no unavailable', e);
     }
 }
 
@@ -364,7 +362,7 @@ function updateAuroraUI({ bz, speed, density, kp, kpForecast }) {
     const forecastScaleEl = document.getElementById('forecastScaleVal');
     if (forecastScaleEl) forecastScaleEl.innerText = gScaleText;
 
-    let nextStormHtml = "Žádný G1+ v obzoru";
+    let nextStormHtml = "No G1+ storm in sight";
     if (kpForecast && Array.isArray(kpForecast)) {
         const nextStorm = kpForecast.find(item => parseFloat(item.kp) >= 5);
         if (nextStorm) {
@@ -527,7 +525,7 @@ function updateAuroraUI({ bz, speed, density, kp, kpForecast }) {
 
             timelineEl.innerHTML = timelineHtml;
         } else {
-            timelineEl.innerHTML = `<div class="loading-text">Žádná data pro časovou osu nebyla vrácena.</div>`;
+            timelineEl.innerHTML = `<div class="loading-text">No timeline data returned.</div>`;
         }
     }
 
